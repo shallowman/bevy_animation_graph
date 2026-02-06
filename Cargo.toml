@@ -13,7 +13,7 @@ repository = "https://github.com/mbrea-c/bevy_animation_graph"
 bevy_animation_graph_proc_macros = { version = "0.8.0", path = "./crates/bevy_animation_graph_proc_macros" }
 bevy_animation_graph = { version = "0.8.0", path = "./crates/bevy_animation_graph" }
 
-bevy = { version = "0.17", path = "../../bevy_engine" }
-avian3d = { version = "0.4", path = "../avian/crates/avian3d" }
+bevy = { version = "0.18", default-features = true }
+avian3d = { version = "0.5" }
 ron = "0.10.1"
 serde = { version = "1.0" }
