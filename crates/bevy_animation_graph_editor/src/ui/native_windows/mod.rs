@@ -3,7 +3,7 @@ use bevy::ecs::{
     entity::Entity,
     event::Event,
     query::With,
-    system::command::trigger,
+    system::{Commands, command::trigger},
     world::{CommandQueue, World},
 };
 use egui_dock::egui;
@@ -16,6 +16,7 @@ use crate::ui::{
 };
 
 pub mod animation_clip_preview;
+pub mod asset_creation;
 pub mod debugger;
 pub mod event_sender;
 pub mod event_track_editor;
@@ -43,8 +44,17 @@ pub struct EditorWindowContext<'a> {
 impl EditorWindowContext<'_> {
     pub fn make_queue(&self) -> OwnedQueue {
         OwnedQueue {
+            window_entity: self.window_entity,
+            view_entity: self.view_entity,
             command_queue: CommandQueue::default(),
         }
+    }
+
+    pub fn queue_context<T>(&mut self, f: impl FnOnce(&mut Self, &mut OwnedQueue) -> T) -> T {
+        let mut queue = self.make_queue();
+        let out = f(self, &mut queue);
+        self.consume_queue(queue);
+        out
     }
 
     pub fn consume_queue(&mut self, mut queue: OwnedQueue) {
@@ -53,6 +63,9 @@ impl EditorWindowContext<'_> {
 }
 
 pub struct OwnedQueue {
+    pub window_entity: Entity,
+    #[allow(dead_code)]
+    pub view_entity: Entity,
     pub command_queue: CommandQueue,
 }
 
@@ -137,6 +150,28 @@ impl NativeEditorWindow {
         };
 
         ext.init(world, &ctx);
+
+        Self {
+            window: Box::new(ext),
+            entity,
+        }
+    }
+
+    pub fn create_cmd<T: NativeEditorWindowExtension + Copy>(
+        commands: &mut Commands,
+        view_entity: Entity,
+        ext: T,
+    ) -> Self {
+        let entity = commands.spawn((WindowState,)).id();
+
+        let ctx = EditorWindowRegistrationContext {
+            window: entity,
+            view: view_entity,
+        };
+
+        commands.queue(move |world: &mut World| {
+            ext.init(world, &ctx);
+        });
 
         Self {
             window: Box::new(ext),

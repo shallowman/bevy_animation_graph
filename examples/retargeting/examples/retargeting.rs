@@ -1,9 +1,10 @@
 extern crate bevy;
 extern crate bevy_animation_graph;
 
-use bevy::{light::CascadeShadowConfigBuilder, prelude::*};
-use bevy_animation_graph::prelude::*;
 use std::f32::consts::PI;
+
+use bevy::{light::CascadeShadowConfigBuilder, prelude::*};
+use bevy_animation_graph::{AnimationGraphPlugin, core::animated_scene::AnimatedSceneHandle};
 
 fn main() {
     App::new()
@@ -12,7 +13,7 @@ fn main() {
             ..default()
         }))
         .add_plugins(AnimationGraphPlugin::default())
-        .insert_resource(AmbientLight {
+        .insert_resource(GlobalAmbientLight {
             color: Color::WHITE,
             brightness: 0.1,
             ..default()

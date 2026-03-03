@@ -6,3 +6,5 @@ post-update.pdf
 fixed-post-update.dot
 fixed-post-update.pdf
 .idea
+migration-tmp-dir-*
+/book/book

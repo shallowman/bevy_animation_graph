@@ -1,22 +1,35 @@
-use std::f32::consts::{FRAC_PI_2, PI};
-use std::path::PathBuf;
+use std::{
+    f32::consts::{FRAC_PI_2, PI},
+    path::PathBuf,
+};
 
-use crate::tree::{TreeInternal, TreeResult};
-use crate::ui::SubSceneSyncAction;
-use bevy::asset::UntypedAssetId;
-use bevy::camera::RenderTarget;
-use bevy::ecs::world::CommandQueue;
-use bevy::prelude::*;
-use bevy::render::render_resource::Extent3d;
-use bevy_animation_graph::core::animation_graph::{AnimationGraph, NodeId, PinMap};
-use bevy_animation_graph::core::context::SpecContext;
-use bevy_animation_graph::core::state_machine::high_level::StateMachine;
-use bevy_animation_graph::prelude::{AnimatedSceneInstance, AnimationGraphPlayer, DataSpec};
-use bevy_inspector_egui::bevy_egui::EguiUserTextures;
-use bevy_inspector_egui::egui;
+use bevy::{
+    asset::{AssetPath, UntypedAssetId},
+    camera::RenderTarget,
+    ecs::world::CommandQueue,
+    prelude::*,
+    render::render_resource::Extent3d,
+};
+use bevy_animation_graph::{
+    builtin_nodes::{dummy_node::DummyNode, fsm_node::FsmNode},
+    core::{
+        animated_scene::AnimatedSceneInstance,
+        animation_graph::{AnimationGraph, NodeId, PinMap},
+        animation_graph_player::AnimationGraphPlayer,
+        animation_node::AnimationNode,
+        context::spec_context::SpecResources,
+        edge_data::DataSpec,
+        state_machine::high_level::StateMachine,
+    },
+};
+use bevy_egui::EguiUserTextures;
 use bevy_inspector_egui::reflect_inspector::{Context, InspectorUi};
 
 use super::{PartOfSubScene, PreviewScene, SubSceneConfig, provide_texture_for_scene};
+use crate::{
+    tree::{TreeInternal, TreeResult},
+    ui::SubSceneSyncAction,
+};
 
 pub mod collapsing;
 pub mod popup;
@@ -39,12 +52,17 @@ pub(crate) fn get_node_output_data_pins(
     world.resource_scope::<Assets<AnimationGraph>, _>(|world, graph_assets| {
         world.resource_scope::<Assets<StateMachine>, _>(|_, fsm_assets| {
             let graph = graph_assets.get(graph_id).unwrap();
-            let spec_context = SpecContext {
+            let spec_resources = SpecResources {
                 graph_assets: &graph_assets,
                 fsm_assets: &fsm_assets,
             };
             let node = graph.nodes.get(node_id)?;
-            Some(node.inner.data_output_spec(spec_context))
+            let spec = node.new_spec(spec_resources).ok()?;
+            Some(
+                spec.iter_output_data()
+                    .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                    .collect(),
+            )
         })
     })
 }
@@ -96,6 +114,17 @@ pub(crate) fn get_specific_animation_graph_player(
     query.get(world, entity).ok()
 }
 
+pub(crate) fn find_fsm_node_in_graph(
+    world: &World,
+    graph: AssetId<AnimationGraph>,
+    fsm: AssetId<StateMachine>,
+) -> Option<NodeId> {
+    world
+        .resource::<Assets<AnimationGraph>>()
+        .get(graph)
+        .and_then(|graph| graph.contains_node_that::<FsmNode>(|node| node.fsm.id() == fsm))
+}
+
 pub(crate) fn iter_animation_graph_players(world: &World) -> Vec<(Entity, &AnimationGraphPlayer)> {
     let mut scene_query = world
         .try_query::<(&AnimatedSceneInstance, &PreviewScene)>()
@@ -128,10 +157,23 @@ pub(crate) fn get_animation_graph_player_mut(
         .map(|player| player.into_inner())
 }
 
-pub fn handle_path(handle: UntypedAssetId, asset_server: &AssetServer) -> PathBuf {
+pub fn handle_path_server(handle: UntypedAssetId, asset_server: &AssetServer) -> PathBuf {
     asset_server
         .get_path(handle)
-        .map_or("Unsaved Asset".into(), |p| p.path().to_owned())
+        .map_or("<asset without path>".into(), |p| p.path().to_owned())
+}
+
+pub fn asset_path(handle: UntypedAssetId, asset_server: &AssetServer) -> AssetPath<'static> {
+    asset_server.get_path(handle).map_or(
+        AssetPath::from_path(&PathBuf::from("<asset without path>")).clone_owned(),
+        |p| p.clone_owned(),
+    )
+}
+
+pub fn handle_path(handle: UntypedHandle) -> String {
+    handle
+        .path()
+        .map_or("<asset without path>".into(), |p| p.to_string())
 }
 
 pub fn render_image(ui: &mut egui::Ui, world: &mut World, image: &Handle<Image>) -> egui::Response {
@@ -214,10 +256,10 @@ impl<T: SubSceneConfig> SubSceneConfig for OrbitCameraSceneConfig<T> {
             Camera {
                 // render before the "main pass" camera
                 order: -1,
-                clear_color: ClearColorConfig::Custom(LinearRgba::new(1.0, 1.0, 1.0, 0.0).into()),
-                target: RenderTarget::Image(render_target.clone().into()),
+                clear_color: ClearColorConfig::Custom(LinearRgba::new(0.0, 0.0, 0.0, 1.0).into()),
                 ..default()
             },
+            RenderTarget::Image(render_target.clone().into()),
             // Position based on orbit camera parameters
             orbit_camera_transform(&self.view),
         ));
@@ -344,4 +386,8 @@ pub fn with_assets_all<A: Asset, T, const N: usize>(
             std::array::from_fn(|i| maybe_assets[i].expect("Already checked it's not None"));
         Some(f(world, all_assets))
     })
+}
+
+pub fn dummy_node() -> AnimationNode {
+    AnimationNode::new("New node", DummyNode)
 }

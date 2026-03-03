@@ -1,29 +1,30 @@
-mod egui_fsm;
 mod egui_nodes;
-mod fsm_show;
 mod graph_show;
 mod icons;
 mod scanner;
 mod tree;
 mod ui;
 
-use bevy::camera::visibility::RenderLayers;
-use bevy::prelude::*;
-use bevy_animation_graph::core::plugin::AnimationGraphPlugin;
+use std::path::PathBuf;
+
+use bevy::{camera::visibility::RenderLayers, prelude::*};
+use bevy_animation_graph::AnimationGraphPlugin;
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_egui};
 use clap::Parser;
-use fsm_show::FsmIndicesMap;
 use graph_show::GraphIndicesMap;
 use scanner::ScannerPlugin;
-use std::path::PathBuf;
-use ui::UiState;
-use ui::actions::PendingActions;
-use ui::actions::clip_preview::ClipPreviewScenes;
-use ui::actions::saving::DirtyAssets;
-use ui::egui_inspector_impls::BetterInspectorPlugin;
+use ui::{
+    UiState,
+    actions::{PendingActions, clip_preview::ClipPreviewScenes, saving::DirtyAssets},
+    egui_inspector_impls::BetterInspectorPlugin,
+};
 
-use crate::ui::node_editors::register_node_editables;
+use crate::ui::{
+    actions::clip_preview::NodePreviewScenes, node_editors::register_node_editables,
+    reflect_lib::default_registry::default_widget_registry,
+    reflect_widgets::register_reflect_widgets,
+};
 
 #[derive(Parser, Resource)]
 struct Cli {
@@ -47,13 +48,25 @@ impl Plugin for AnimationGraphEditorPlugin {
 
         app //
             .add_plugins(
-                DefaultPlugins.set(AssetPlugin {
-                    file_path: std::fs::canonicalize(&cli.asset_source)
-                        .unwrap()
-                        .to_string_lossy()
-                        .into(),
-                    ..Default::default()
-                }),
+                DefaultPlugins
+                    .set(AssetPlugin {
+                        file_path: std::fs::canonicalize(&cli.asset_source)
+                            .unwrap()
+                            .to_string_lossy()
+                            .into(),
+                        watch_for_changes_override: Some(true),
+                        ..Default::default()
+                    })
+                    .set(WindowPlugin {
+                        primary_window: Some(Window {
+                            title: format!(
+                                "Bevy Animation Graph Editor {}",
+                                env!("CARGO_PKG_VERSION")
+                            ),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
             )
             .add_plugins(EguiPlugin::default())
             .add_plugins(AnimationGraphPlugin::from_physics_schedule(FixedPostUpdate))
@@ -67,11 +80,18 @@ impl Plugin for AnimationGraphEditorPlugin {
 
         UiState::init(app.world_mut());
 
+        // Default widget registry with widgets for primitive types
+        let mut reflect_widget_registry = default_widget_registry();
+
+        // Register editor specific widgets
+        register_reflect_widgets(&mut reflect_widget_registry);
+
         app.insert_resource(PendingActions::default())
             .insert_resource(DirtyAssets::default())
             .insert_resource(GraphIndicesMap::default())
-            .insert_resource(FsmIndicesMap::default())
             .insert_resource(ClipPreviewScenes::default())
+            .insert_resource(NodePreviewScenes::default())
+            .insert_resource(reflect_widget_registry)
             .insert_resource(cli);
 
         register_node_editables(app);
